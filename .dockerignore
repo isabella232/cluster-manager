@@ -1,0 +1,5 @@
+./bin
+./.dapper
+./.gpath
+./dist
+./.trash-cache
