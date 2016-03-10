@@ -133,6 +133,7 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 		if err := rancher.LaunchStack(env, accessKey, secretKey, projectURL); err != nil {
 			return err
 		}
+		log.Infof("Done launching management stack")
 		z.launchedStack = true
 	}
 

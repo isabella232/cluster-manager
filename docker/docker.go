@@ -157,7 +157,7 @@ func (d *Docker) deleteContainers(deleteLabels map[string]string) error {
 
 	labels := filters.NewArgs()
 	for k, v := range deleteLabels {
-		labels.Add("labels", fmt.Sprintf("%s=%s", k, v))
+		labels.Add("label", fmt.Sprintf("%s=%s", k, v))
 	}
 	cls, err := d.Cli.ContainerList(types.ContainerListOptions{
 		Filter: labels,

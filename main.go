@@ -16,14 +16,14 @@ func main() {
 		DockerSocket:    "/var/run/docker.sock",
 		DBUser:          "cattle",
 		DBPassword:      "cattle",
-		DBHost:          "172.17.0.1",
+		DBHost:          "",
 		DBPort:          3306,
 		DBName:          "cattle",
 	}
 
 	c.LoadConfig()
 
-	if c.ClusterSize == 1 {
+	if c.ClusterSize == 1 && c.ClusterIP == "" {
 		c.ClusterIP = "127.0.0.1"
 	}
 
