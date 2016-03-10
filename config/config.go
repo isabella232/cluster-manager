@@ -41,6 +41,11 @@ func (c *Config) LoadConfig() {
 	setFromEnv(&c.DBName, "CATTLE_DB_CATTLE_MYSQL_NAME")
 	setFromEnv(&c.DBUser, "CATTLE_DB_CATTLE_USERNAME")
 	setFromEnvInt(&c.DBPort, "CATTLE_DB_CATTLE_PASSWORD")
+	setFromEnv(&c.DBHost, "HA_DB_HOST")
+	setFromEnvInt(&c.DBPort, "HA_DB_PORT")
+	setFromEnv(&c.DBName, "HA_DB_NAME")
+	setFromEnv(&c.DBUser, "HA_DB_USERNAME")
+	setFromEnvInt(&c.DBPort, "HA_DB_PASSWORD")
 }
 
 func (c *Config) loadFromDocker() {

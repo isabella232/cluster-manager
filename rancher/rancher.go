@@ -7,6 +7,7 @@ import (
 	"net/http"
 	netUrl "net/url"
 	"strings"
+	"time"
 
 	// not needed, working around goimports issue in vim
 	_ "github.com/docker/machine/libmachine/log"
@@ -14,7 +15,7 @@ import (
 )
 
 const (
-	projectUUIDBase = "system-management"
+	projectUUIDBase = "system-management-"
 	systemSsl       = "system-ssl"
 	agentImage      = "bootstrap.required.image"
 )
@@ -83,7 +84,7 @@ func getProject(c *client.RancherClient) (*client.Project, string, error) {
 		opts := client.NewListOpts()
 		uuid := fmt.Sprintf("%s%d", projectUUIDBase, i)
 		opts.Filters["uuid"] = uuid
-		projects, err := c.Project.List(opts)
+		projects, err := c.Account.List(opts)
 		if err != nil {
 			return nil, "", err
 		}
@@ -95,15 +96,19 @@ func getProject(c *client.RancherClient) (*client.Project, string, error) {
 				AllowSystemRole: true,
 			})
 			if err != nil {
+				log.Infof("Failed to create project: %v", err)
+				time.Sleep(1 * time.Second)
 				continue
 			}
 			return p, uuid, nil
 		}
 		for _, project := range projects.Data {
 			if project.Removed == "" {
-				return &project, uuid, nil
+				p, err := c.Project.ById(project.Id)
+				return p, uuid, err
 			}
 		}
+		log.Infof("Found %d projects for %s", len(projects.Data), uuid)
 	}
 }
 
