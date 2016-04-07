@@ -26,26 +26,66 @@ type Config struct {
 	DBPort          int
 	DBUser          string
 	UUID            string
+	Ports           map[string]int
+
+	SwarmEnabled bool
+	HttpEnabled  bool
+
+	ConfigPath          string
+	CertPath            string
+	KeyPath             string
+	CertChainPath       string
+	EncryptionKeyPath   string
+	HostRegistrationUrl string
 }
 
-func (c *Config) LoadConfig() {
+func (c *Config) LoadConfig() error {
 	c.loadFromDocker()
 
-	setFromEnv(&c.Image, "HA_CLUSTER_IMAGE")
-	setFromEnv(&c.ClusterIP, "HA_CLUSTER_IP")
-	setFromEnvInt(&c.ClusterSize, "HA_CLUSTER_SIZE")
-	setFromEnv(&c.ContainerPrefix, "HA_CONTAINER_PREFIX")
+	setFromEnv(&c.Image, "CATTLE_HA_CLUSTER_IMAGE")
+	setFromEnv(&c.ClusterIP, "CATTLE_HA_CLUSTER_IP")
+	setFromEnvInt(&c.ClusterSize, "CATTLE_HA_CLUSTER_SIZE")
+	setFromEnv(&c.ContainerPrefix, "CATTLE_HA_CONTAINER_PREFIX")
 	setFromEnv(&c.DockerSocket, "HOST_DOCKER_SOCK")
+
 	setFromEnv(&c.DBHost, "CATTLE_DB_CATTLE_MYSQL_HOST")
 	setFromEnvInt(&c.DBPort, "CATTLE_DB_CATTLE_MYSQL_PORT")
 	setFromEnv(&c.DBName, "CATTLE_DB_CATTLE_MYSQL_NAME")
 	setFromEnv(&c.DBUser, "CATTLE_DB_CATTLE_USERNAME")
-	setFromEnvInt(&c.DBPort, "CATTLE_DB_CATTLE_PASSWORD")
-	setFromEnv(&c.DBHost, "HA_DB_HOST")
-	setFromEnvInt(&c.DBPort, "HA_DB_PORT")
-	setFromEnv(&c.DBName, "HA_DB_NAME")
-	setFromEnv(&c.DBUser, "HA_DB_USERNAME")
-	setFromEnvInt(&c.DBPort, "HA_DB_PASSWORD")
+	setFromEnv(&c.DBPassword, "CATTLE_DB_CATTLE_PASSWORD")
+
+	setFromEnvBool(&c.SwarmEnabled, "CATTLE_HA_SWARM_ENABLED")
+	setFromEnvBool(&c.HttpEnabled, "CATTLE_HA_HTTP_ENABLED")
+
+	setFromEnv(&c.ConfigPath, "CATTLE_HA_CONFIG_PATH")
+	setFromEnv(&c.CertPath, "CATTLE_HA_CERT_PATH")
+	setFromEnv(&c.KeyPath, "CATTLE_HA_KEY_PATH")
+	setFromEnv(&c.CertChainPath, "CATTLE_HA_CERT_CHAIN_PATH")
+	setFromEnv(&c.EncryptionKeyPath, "CATTLE_HA_ENCRYPTION_KEY_PATH")
+	setFromEnv(&c.HostRegistrationUrl, "CATTLE_HA_HOST_REGISTRATION_URL")
+
+	if c.Ports == nil {
+		c.Ports = map[string]int{}
+	}
+
+	for _, env := range os.Environ() {
+		if !strings.HasPrefix(env, "CATTLE_HA_PORT_") {
+			continue
+		}
+		keyValue := strings.SplitN(env, "=", 2)
+		key := strings.TrimPrefix(keyValue[0], "CATTLE_HA_PORT_")
+		key = strings.ToLower(key)
+		key = strings.Replace(key, "_", "-", -1)
+		value, err := strconv.Atoi(keyValue[1])
+		if err != nil {
+			return fmt.Errorf("Failed to read %s as an integer: %v", env, err)
+		}
+		c.Ports[key] = value
+	}
+
+	password, err := DecryptConfig(c, c.DBPassword)
+	c.DBPassword = password
+	return err
 }
 
 func (c *Config) loadFromDocker() {
@@ -62,6 +102,21 @@ func (c *Config) loadFromDocker() {
 			}
 		}
 	}
+
+	if c.ContainerEnv == nil {
+		c.ContainerEnv = map[string]string{}
+	}
+
+	if _, ok := c.ContainerEnv["CATTLE_HA_ENCRYPTION_KEY_PATH"]; !ok {
+		c.ContainerEnv["CATTLE_HA_ENCRYPTION_KEY_PATH"] = c.EncryptionKeyPath
+	}
+
+	c.ContainerEnv["CATTLE_HA_CONTAINER"] = "true"
+}
+
+func setFromEnvBool(target *bool, key string) {
+	val := os.Getenv(key)
+	*target = strings.EqualFold(val, "true")
 }
 
 func setFromEnvInt(target *int, key string) {
@@ -80,6 +135,10 @@ func setFromEnv(target *string, key string) {
 	if val != "" {
 		*target = val
 	}
+}
+
+func (c *Config) ZkHost() string {
+	return fmt.Sprintf("localhost:%d", db.ZkPortBaseClient)
 }
 
 func (c *Config) ZkHosts() string {

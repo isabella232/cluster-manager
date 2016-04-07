@@ -2,18 +2,21 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
-	"strconv"
-	"strings"
 
 	"github.com/Sirupsen/logrus"
 )
 
 const (
-	Redis    = "redis"
-	Zk       = "zk"
-	Zk2      = "zk2"
-	ZkClient = "zk-client"
+	Swarm        = "swarm"
+	Http         = "http"
+	Https        = "https"
+	Redis        = "redis"
+	Zk           = "zk"
+	ZkQuorumPort = "zk-quorum"
+	ZkLeaderPort = "zk-leader"
+	ZkClientPort = "zk-client"
 
 	RedisPortBase     = 6379
 	ZkPortBase        = 2888
@@ -23,7 +26,17 @@ const (
 )
 
 var (
-	log = logrus.WithField("component", "db")
+	log                 = logrus.WithField("component", "db")
+	ServicePorts        = []string{Redis, ZkQuorumPort, ZkLeaderPort, ZkClientPort}
+	DefaultServicePorts = map[string]int{
+		Swarm:        2376,
+		Http:         80,
+		Https:        443,
+		Redis:        RedisPortBase,
+		ZkQuorumPort: ZkPortBase,
+		ZkLeaderPort: ZkPortBase2,
+		ZkClientPort: ZkPortBaseClient,
+	}
 )
 
 type Member struct {
@@ -31,43 +44,24 @@ type Member struct {
 	Name           string
 	UUID           string
 	IP             string
-	ports          string
+	Ports          map[string]int
 	RequestedIndex int
 	Heartbeat      int
 	Index          int
 }
 
 func (m Member) PortByService(service string) int {
-	zk, zk2, zkClient, redis := m.parsePorts()
-	switch service {
-	case Zk:
-		return zk
-	case Zk2:
-		return zk2
-	case ZkClient:
-		return zkClient
-	case Redis:
-		return redis
+	if port, ok := m.Ports[service]; ok {
+		return port
 	}
-	return -1
+	return DefaultServicePorts[service]
 }
 
-func (m Member) parsePorts() (int, int, int, int) {
-	ports := []int{}
-	parts := strings.Split(m.ports, ",")
-	for _, p := range parts {
-		port, err := strconv.Atoi(p)
-		if err != nil {
-			break
-		}
-		ports = append(ports, port)
+func LookupPortByService(ports map[string]int, service string) int {
+	if port, ok := ports[service]; ok {
+		return port
 	}
-
-	if len(ports) == 4 {
-		return ports[0], ports[1], ports[2], ports[3]
-	}
-
-	return ZkPortBase, ZkPortBase2, ZkPortBaseClient, RedisPortBase
+	return DefaultServicePorts[service]
 }
 
 type DB struct {
@@ -96,12 +90,12 @@ func (d *DB) Migrate() error {
 	_, err = d.db.Exec("CREATE TABLE IF NOT EXISTS `cluster` (" +
 		"`id` bigint(20) NOT NULL AUTO_INCREMENT," +
 		"`name` varchar(256) DEFAULT NULL," +
-		"`heartbeat` bigint(20) NOT NULL," +
+		"`heartbeat` bigint(20) DEFAULT 0 NOT NULL," +
 		"`uuid` varchar(128) NOT NULL," +
 		"`ip_address` varchar(128) NOT NULL," +
 		"`requested_index` int(11) NOT NULL," +
-		"`assigned_index` int(11) NOT NULL," +
-		"`ports` varchar(128) NOT NULL," +
+		"`assigned_index` int(11) DEFAULT 0 NOT NULL," +
+		"`ports` varchar(1024)," +
 		" PRIMARY KEY (id)" +
 		") ENGINE=InnoDB DEFAULT CHARSET=utf8;")
 	return err
@@ -119,10 +113,17 @@ func (d *DB) Members() ([]Member, error) {
 	result := []Member{}
 
 	for rows.Next() {
+		ports := ""
 		member := Member{}
-		if err := rows.Scan(&member.ID, &NullStringWrapper{String: &member.Name}, &member.Heartbeat, &member.UUID, &member.Index, &member.RequestedIndex, &member.ports,
+		if err := rows.Scan(&member.ID, &NullStringWrapper{String: &member.Name}, &member.Heartbeat, &member.UUID, &member.Index, &member.RequestedIndex, &NullStringWrapper{String: &ports},
 			&member.IP); err != nil {
 			return nil, err
+		}
+		if ports != "" {
+			member := map[string]int{}
+			if err := json.Unmarshal([]byte(ports), member); err != nil {
+				return nil, err
+			}
 		}
 		result = append(result, member)
 	}

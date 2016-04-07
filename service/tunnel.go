@@ -3,19 +3,10 @@ package service
 import (
 	"fmt"
 
+	"github.com/docker/engine-api/types/container"
 	"github.com/rancher/cluster-manager/config"
 	"github.com/rancher/cluster-manager/db"
 	"github.com/rancher/cluster-manager/docker"
-)
-
-var (
-	services      = []string{db.Zk, db.Zk2, db.ZkClient, db.Redis}
-	serviceToPort = map[string]int{
-		db.Zk:       db.ZkPortBase,
-		db.Zk2:      db.ZkPortBase2,
-		db.ZkClient: db.ZkPortBaseClient,
-		db.Redis:    db.RedisPortBase,
-	}
 )
 
 type TunnelFactory struct {
@@ -32,7 +23,7 @@ func NewTunnelFactory(c *config.Config, d *docker.Docker) *TunnelFactory {
 
 func (t *TunnelFactory) DeleteTunnels(index int) error {
 	var lastErr error
-	for _, service := range services {
+	for _, service := range db.ServicePorts {
 		err := t.deletePipe(service, index)
 		if err != nil {
 			lastErr = err
@@ -42,8 +33,8 @@ func (t *TunnelFactory) DeleteTunnels(index int) error {
 }
 
 func (t *TunnelFactory) CreateTunnels(outgoing bool, target db.Member) error {
-	for _, service := range services {
-		basePort := serviceToPort[service]
+	for _, service := range db.ServicePorts {
+		basePort := db.DefaultServicePorts[service]
 
 		if outgoing && target.IP == t.c.ClusterIP {
 			// Don't encrypt back to yourself
@@ -68,13 +59,16 @@ func (t *TunnelFactory) pipeDecrypt(name string, index, basePort, port int) erro
 	containerName := fmt.Sprintf("tunnel-%s-%d", name, index)
 	source := fmt.Sprintf("[0.0.0.0]:%d", port+10000)
 	target := fmt.Sprintf("[127.0.0.1]:%d", to)
-	cmd := []string{"spiped", "-F", "-d", "-s", source, "-t", target, "-k", "keyfile"}
+	cmd := []string{"tunnel", "-d", "-s", source, "-t", target}
 
 	return t.d.Launch(docker.Container{
 		Name:    containerName,
 		Command: cmd,
 		Labels: map[string]string{
 			"io.rancher.ha.service.tunnel": fmt.Sprintf("%s-%d", name, index),
+		},
+		RestartPolicy: container.RestartPolicy{
+			Name: "always",
 		},
 	})
 }
@@ -84,13 +78,16 @@ func (t *TunnelFactory) pipeEncrypt(name string, index, basePort, port int, ip s
 	containerName := fmt.Sprintf("tunnel-%s-%d", name, index)
 	source := fmt.Sprintf("[127.0.0.1]:%d", from)
 	target := fmt.Sprintf("[%s]:%d", ip, port)
-	cmd := []string{"spiped", "-F", "-e", "-s", source, "-t", target, "-k", "keyfile"}
+	cmd := []string{"tunnel", "-e", "-s", source, "-t", target}
 
 	return t.d.Launch(docker.Container{
 		Name:    containerName,
 		Command: cmd,
 		Labels: map[string]string{
 			"io.rancher.ha.service.tunnel": fmt.Sprintf("%s-%d", name, index),
+		},
+		RestartPolicy: container.RestartPolicy{
+			Name: "always",
 		},
 	})
 }

@@ -9,16 +9,22 @@ import (
 
 func main() {
 	c := &config.Config{
-		Image:           "rancher/server:dev",
-		UUID:            uuid.NewV4().String(),
-		ContainerPrefix: "rancher-ha-",
-		ClusterSize:     3,
-		DockerSocket:    "/var/run/docker.sock",
-		DBUser:          "cattle",
-		DBPassword:      "cattle",
-		DBHost:          "",
-		DBPort:          3306,
-		DBName:          "cattle",
+		UUID:              uuid.NewV4().String(),
+		ContainerPrefix:   "rancher-ha-",
+		ClusterSize:       3,
+		DockerSocket:      "/var/run/docker.sock",
+		DBUser:            "cattle",
+		DBPassword:        "cattle",
+		DBHost:            "mysql",
+		DBPort:            3306,
+		DBName:            "cattle",
+		SwarmEnabled:      true,
+		HttpEnabled:       true,
+		ConfigPath:        "/var/lib/rancher/etc",
+		CertPath:          "server/cert.pem",
+		KeyPath:           "server/key.pem",
+		CertChainPath:     "server/ca.pem",
+		EncryptionKeyPath: "server/encryption.key",
 	}
 
 	c.LoadConfig()
@@ -28,7 +34,7 @@ func main() {
 	}
 
 	if c.ClusterIP == "" {
-		logrus.Fatalf("HA_CLUSTER_IP must be set")
+		logrus.Fatalf("CATTLE_HA_CLUSTER_IP must be set")
 	}
 
 	if err := c.OpenDB(); err != nil {

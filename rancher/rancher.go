@@ -2,8 +2,10 @@ package rancher
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	netUrl "net/url"
 	"strings"
@@ -15,10 +17,46 @@ import (
 )
 
 const (
-	projectUUIDBase = "system-management-"
+	projectUUIDBase = "system-ha-"
 	systemSsl       = "system-ssl"
 	agentImage      = "bootstrap.required.image"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+func WaitForHosts(accessKey, secretKey, url string, count int) error {
+	c, err := client.NewRancherClient(&client.ClientOpts{
+		Url:       url,
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+	})
+	if err != nil {
+		return err
+	}
+
+	opts := client.NewListOpts()
+	opts.Filters["state"] = "active"
+	hosts, err := c.Host.List(opts)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; len(hosts.Data) < count; i++ {
+		if i > 30 {
+			return errors.New("Timeout waiting for hosts to be active")
+		}
+		log.Infof("Waiting for %d host(s) to be active", count)
+		time.Sleep(2 * time.Second)
+		hosts, err = c.Host.List(opts)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
 
 func GetRancherAgentImage(accessKey, secretKey, url string) (string, error) {
 	c, err := client.NewRancherClient(&client.ClientOpts{
@@ -46,7 +84,7 @@ func GetRancherAgentImage(accessKey, secretKey, url string) (string, error) {
 	return "", fmt.Errorf("Failed to find setting %s to determine agent image", agentImage)
 }
 
-func ConfigureEnvironment(accessKey, secretKey, url string) (string, string, error) {
+func ConfigureEnvironment(create bool, configDir, cert, key, chain, accessKey, secretKey, url string) (string, string, error) {
 	c, err := client.NewRancherClient(&client.ClientOpts{
 		Url:       url,
 		AccessKey: accessKey,
@@ -56,16 +94,16 @@ func ConfigureEnvironment(accessKey, secretKey, url string) (string, string, err
 		return "", "", err
 	}
 
-	project, _, err := getProject(c)
+	project, err := getProject(create, c)
 	if err != nil {
 		return "", "", err
 	}
 
-	if err := createCert(c, project); err != nil {
+	if err := createCert(create, configDir, cert, key, chain, c, project); err != nil {
 		return "", "", err
 	}
 
-	token, err := getToken(c, project)
+	token, err := getToken(create, c, project)
 	if err != nil {
 		return "", "", err
 	}
@@ -79,40 +117,38 @@ func ConfigureEnvironment(accessKey, secretKey, url string) (string, string, err
 	return urlObj.String(), token, err
 }
 
-func getProject(c *client.RancherClient) (*client.Project, string, error) {
-	for i := 0; ; i++ {
-		opts := client.NewListOpts()
-		uuid := fmt.Sprintf("%s%d", projectUUIDBase, i)
-		opts.Filters["uuid"] = uuid
-		projects, err := c.Account.List(opts)
-		if err != nil {
-			return nil, "", err
-		}
-		if len(projects.Data) == 0 {
-			p, err := c.Project.Create(&client.Project{
-				Uuid:            uuid,
-				Name:            "System Management",
-				Description:     "Management components",
-				AllowSystemRole: true,
-			})
-			if err != nil {
-				log.Infof("Failed to create project: %v", err)
-				time.Sleep(1 * time.Second)
-				continue
-			}
-			return p, uuid, nil
-		}
-		for _, project := range projects.Data {
-			if project.Removed == "" {
-				p, err := c.Project.ById(project.Id)
-				return p, uuid, err
-			}
-		}
-		log.Infof("Found %d projects for %s", len(projects.Data), uuid)
+func getProject(create bool, c *client.RancherClient) (*client.Project, error) {
+	opts := client.NewListOpts()
+	opts.Filters["uuid_like"] = projectUUIDBase + "%"
+	opts.Filters["removed_null"] = "true"
+	projects, err := c.Account.List(opts)
+	if err != nil {
+		return nil, err
 	}
+	if len(projects.Data) > 0 {
+		p, err := c.Project.ById(projects.Data[0].Id)
+		return p, err
+	}
+
+	if create {
+		uuid := fmt.Sprintf("%s%d", projectUUIDBase, rand.Int31())
+		p, err := c.Project.Create(&client.Project{
+			Uuid:            uuid,
+			Name:            "System HA",
+			Description:     "Management components",
+			AllowSystemRole: true,
+		})
+		if err != nil {
+			log.Infof("Failed to create project: %v", err)
+			return nil, err
+		}
+		return p, nil
+	}
+
+	return nil, errors.New("HA environment has not yet been created")
 }
 
-func getToken(c *client.RancherClient, p *client.Project) (string, error) {
+func getToken(create bool, c *client.RancherClient, p *client.Project) (string, error) {
 	opts := client.NewListOpts()
 	opts.Filters["accountId"] = p.Id
 	opts.Filters["removed_null"] = "1"
@@ -123,6 +159,9 @@ func getToken(c *client.RancherClient, p *client.Project) (string, error) {
 
 	var token *client.RegistrationToken
 	if len(rt.Data) == 0 {
+		if !create {
+			return "", errors.New("Registration token not yet created")
+		}
 		token, err = c.RegistrationToken.Create(&client.RegistrationToken{
 			AccountId: p.Id,
 		})
@@ -145,7 +184,7 @@ func getToken(c *client.RancherClient, p *client.Project) (string, error) {
 	return token.Token, err
 }
 
-func createCert(c *client.RancherClient, p *client.Project) error {
+func createCert(create bool, configPath, certPath, keyPath, chainPath string, c *client.RancherClient, p *client.Project) error {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = systemSsl
 	opts.Filters["removed_null"] = "1"
@@ -159,7 +198,11 @@ func createCert(c *client.RancherClient, p *client.Project) error {
 		return nil
 	}
 
-	cert, key, chain, err := GenerateCert()
+	if !create {
+		return errors.New("Certificates not yet created")
+	}
+
+	cert, key, chain, err := GenerateCert(configPath, certPath, keyPath, chainPath)
 	if err != nil {
 		return err
 	}

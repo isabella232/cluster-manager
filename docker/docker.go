@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
+	"net"
 	"os"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"golang.org/x/net/context"
@@ -20,6 +23,11 @@ import (
 	"github.com/docker/engine-api/types/container"
 	"github.com/docker/engine-api/types/filters"
 	"github.com/docker/go-connections/nat"
+	"github.com/rancher/cluster-manager/db"
+)
+
+const (
+	ConfigDirDest = "/var/lib/rancher/etc"
 )
 
 var (
@@ -29,7 +37,7 @@ var (
 		Networking: true,
 		Command:    []string{"parent"},
 		Ports: []string{
-			"BRIDGE:18080:8080/tcp",
+			"18080:8080/tcp",
 			"2181:12181/tcp",
 			"2888:12888/tcp",
 			"3888:13888/tcp",
@@ -46,13 +54,16 @@ var (
 			Name: "always",
 		},
 	}
+	cgroupPattern = regexp.MustCompile("^.*/docker-([a-z0-9]+).scope$")
 )
 
 type Docker struct {
 	Cli        *client.Client
+	configDir  string
 	image      string
 	prefix     string
 	defaultEnv map[string]string
+	portMap    map[string]int
 }
 
 type Container struct {
@@ -71,14 +82,16 @@ type Container struct {
 	CheckRunning  string
 }
 
-func New(prefix, image string, defaultEnv map[string]string) (*Docker, error) {
+func New(configDir, prefix, image string, portMap map[string]int, defaultEnv map[string]string) (*Docker, error) {
 	defaultHeaders := map[string]string{"User-Agent": "engine-api-cli-1.0"}
 	cli, err := client.NewClient("unix:///var/run/docker.sock", "v1.22", nil, defaultHeaders)
 	return &Docker{
+		configDir:  configDir,
 		prefix:     prefix,
 		Cli:        cli,
 		image:      image,
 		defaultEnv: defaultEnv,
+		portMap:    portMap,
 	}, err
 }
 
@@ -87,9 +100,19 @@ func (d *Docker) Name() (string, error) {
 	return i.Name, err
 }
 
+func (d *Docker) getParent() Container {
+	config := Parent
+	for _, serviceName := range db.ServicePorts {
+		port := db.DefaultServicePorts[serviceName]
+		publicPort := db.LookupPortByService(d.portMap, serviceName)
+		config.Ports = append(config.Ports, fmt.Sprintf("%d:1%d/tcp", publicPort, port))
+	}
+	return config
+}
+
 func (d *Docker) Launch(container Container) error {
 	if !container.Networking {
-		_, err := d.recreate(Parent)
+		_, err := d.recreate(d.getParent())
 		if err != nil {
 			return err
 		}
@@ -108,16 +131,25 @@ func (d *Docker) Delete(name string) error {
 }
 
 func (d *Docker) GetBridgeIP() (string, error) {
-	net, err := d.Cli.NetworkInspect("bridge")
+	bridge, err := d.Cli.NetworkInspect("bridge")
 	if err != nil {
 		return "", err
 	}
 
-	if len(net.IPAM.Config) == 0 {
+	if len(bridge.IPAM.Config) == 0 {
 		return "", errors.New("Failed to find network address for bridge network")
 	}
 
-	return net.IPAM.Config[0].Gateway, nil
+	ip, _, err := net.ParseCIDR(bridge.IPAM.Config[0].Subnet)
+	if err != nil {
+		return "", err
+	}
+
+	ipInt := big.NewInt(0)
+	ipInt.SetBytes(ip.To4())
+	ipInt.SetInt64(ipInt.Int64() + 1)
+	b := ipInt.Bytes()
+	return net.IPv4(b[0], b[1], b[2], b[3]).String(), nil
 }
 
 func (d *Docker) shouldDelete(container Container, c types.ContainerJSON) bool {
@@ -184,8 +216,14 @@ func (d *Docker) deleteContainer(id string) error {
 	})
 }
 
-//func (d *Docker) recreate(netCon bool, name string, command []string, env map[string]string) (types.ContainerJSON, error) {
 func (d *Docker) recreate(containerDef Container) (types.ContainerJSON, error) {
+	if d.configDir != "" {
+		if containerDef.Volumes == nil {
+			containerDef.Volumes = map[string]string{}
+		}
+		containerDef.Volumes[d.configDir] = ConfigDirDest
+	}
+
 	c, err := d.Cli.ContainerInspect(d.prefix + containerDef.Name)
 	if err != nil && !client.IsErrContainerNotFound(err) {
 		return c, err
@@ -230,6 +268,7 @@ func (d *Docker) recreate(containerDef Container) (types.ContainerJSON, error) {
 		RestartPolicy: containerDef.RestartPolicy,
 		Tmpfs: map[string]string{
 			"/var/lib/zookeeper": "mode=0777",
+			"/key":               "mode=0777",
 		},
 	}
 
@@ -355,6 +394,11 @@ func findContainerID() (string, error) {
 		if strings.Contains(scanner.Text(), "docker/") {
 			parts := strings.Split(scanner.Text(), "/")
 			return parts[len(parts)-1], nil
+		} else {
+			matches := cgroupPattern.FindAllStringSubmatch(scanner.Text(), -1)
+			if len(matches) > 0 && len(matches[0]) > 1 && matches[0][1] != "" {
+				return matches[0][1], nil
+			}
 		}
 	}
 
@@ -368,7 +412,7 @@ func GetImageAndEnv() (string, map[string]string, bool) {
 		return "", nil, false
 	}
 
-	c, err := New("", "", nil)
+	c, err := New("", "", "", nil, nil)
 	container, err := c.Cli.ContainerInspect(id)
 	if err != nil {
 		return "", nil, false

@@ -3,6 +3,7 @@ package rancher
 import (
 	"io/ioutil"
 	"os"
+	"path"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/machine/libmachine/cert"
@@ -17,7 +18,29 @@ var (
 	log = logrus.WithField("component", "cert")
 )
 
-func GenerateCert() (string, string, string, error) {
+func GenerateCert(configPath, certPath, keyPath, chainPath string) (string, string, string, error) {
+	cert, err := ioutil.ReadFile(path.Join(configPath, certPath))
+	if os.IsNotExist(err) {
+		return generateCert()
+	}
+	if err != nil {
+		return "", "", "", err
+	}
+
+	key, err := ioutil.ReadFile(path.Join(configPath, keyPath))
+	if err != nil {
+		return "", "", "", err
+	}
+
+	chain, err := ioutil.ReadFile(path.Join(configPath, chainPath))
+	if err != nil {
+		return "", "", "", err
+	}
+
+	return string(cert), string(key), string(chain), nil
+}
+
+func generateCert() (string, string, string, error) {
 	caCert, err := ioutil.TempFile("/tmp", "cacert")
 	if err != nil {
 		return "", "", "", err

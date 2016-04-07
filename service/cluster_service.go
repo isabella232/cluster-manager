@@ -56,22 +56,29 @@ func (z *ClusterService) Update(master bool, byIndex map[int]db.Member) error {
 	}
 
 	if z.state.index != newState.index || !reflect.DeepEqual(z.state.cluster, newState.cluster) {
+		if len(newState.cluster) <= z.config.ClusterSize/2 {
+			log.Infof("Waiting for at least %d cluster members", z.config.ClusterSize/2+1)
+			return nil
+		}
 		log.Infof("Cluster changed, index=%d, members=[%s]", newState.index, strings.Join(newState.cluster, ", "))
+
 		if err := z.configure(newState); err != nil {
 			return err
 		}
-		z.state = newState
 
-		if len(newState.cluster) > z.config.ClusterSize/2 {
-			if err := z.launchRancherServer(); err != nil {
-				return err
-			}
-
+		if err := z.launchRancherServer(); err != nil {
+			return err
 		}
+
+		z.state = newState
 	}
 
 	if err := z.launchRancherAgent(master); err != nil {
 		log.Infof("Can not launch agent right now: %v", err)
+		// Ensure that the server is running
+		if err := z.launchRancherServer(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -92,10 +99,11 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 	pingURL := fmt.Sprintf("http://%s:%d/ping", bridgeIP, db.RancherServerPort)
 
 	if !rancher.WaitForRancher(pingURL) {
-		return errors.New("Server not available")
+		return fmt.Errorf("Server not available at %s:", pingURL)
 	}
 
-	projectURL, token, err := rancher.ConfigureEnvironment(accessKey, secretKey, url)
+	projectURL, token, err := rancher.ConfigureEnvironment(master, z.config.ConfigPath, z.config.CertPath, z.config.KeyPath,
+		z.config.CertChainPath, accessKey, secretKey, url)
 	if err != nil {
 		return err
 	}
@@ -117,7 +125,6 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 		},
 		Command: []string{tokenURL},
 		Env: map[string]string{
-			"CATTLE_SCRIPT_DEBUG": "true",
 			"CATTLE_AGENT_IP":     z.config.ClusterIP,
 			"CATTLE_URL_OVERRIDE": urlOverride,
 		},
@@ -127,50 +134,76 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 	}
 
 	if !z.launchedStack && master {
+		if err := rancher.WaitForHosts(accessKey, secretKey, projectURL, z.config.ClusterSize); err != nil {
+			z.d.Delete("rancher-agent")
+			log.Fatalf("Failed while waiting for %d host(s) to be active: %v", z.config.ClusterSize, err)
+			return err
+		}
 		env := docker.ToEnv(map[string]string{
-			"HA_IMAGE": z.config.Image,
+			"CATTLE_HA_PORT_HTTP":  strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Http)),
+			"CATTLE_HA_PORT_HTTPS": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Https)),
+			"CATTLE_HA_PORT_SWARM": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Swarm)),
+			"HA_IMAGE":             z.config.Image,
 		})
 		if err := rancher.LaunchStack(env, accessKey, secretKey, projectURL); err != nil {
 			return err
 		}
 		log.Infof("Done launching management stack")
+		if z.config.HostRegistrationUrl != "" {
+			log.Infof("You can access the site at %s", z.config.HostRegistrationUrl)
+		}
 		z.launchedStack = true
+	}
+
+	if !master {
+		z.launchedStack = master
 	}
 
 	return nil
 }
 
 func (z *ClusterService) launchRancherServer() error {
+	env := map[string]string{
+		"CATTLE_SWARM_TLS_PORT":              strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Swarm)),
+		"CATTLE_MACHINE_EXECUTE":             "false",
+		"CATTLE_COMPOSE_EXECUTOR_EXECUTE":    "false",
+		"CATTLE_CATALOG_EXECUTE":             "false",
+		"CATTLE_HOST_API_PROXY_MODE":         "ha",
+		"CATTLE_MODULE_PROFILE_REDIS":        "true",
+		"CATTLE_REDIS_HOSTS":                 z.config.RedisHosts(),
+		"CATTLE_MODULE_PROFILE_ZOOKEEPER":    "true",
+		"CATTLE_ZOOKEEPER_CONNECTION_STRING": z.config.ZkHosts(),
+		"CATTLE_DB_CATTLE_DATABASE":          "mysql",
+		"CATTLE_DB_CATTLE_MYSQL_HOST":        z.config.DBHost,
+		"CATTLE_DB_CATTLE_MYSQL_PORT":        strconv.Itoa(z.config.DBPort),
+		"CATTLE_DB_CATTLE_USERNAME":          z.config.DBUser,
+		"CATTLE_DB_CATTLE_PASSWORD":          z.config.DBPassword,
+		"CATTLE_DB_CATTLE_MYSQL_NAME":        z.config.DBName,
+	}
+
+	if z.config.HostRegistrationUrl != "" {
+		env["CATTLE_API_HOST"] = z.config.HostRegistrationUrl
+	}
+
 	return z.d.Launch(docker.Container{
 		Name:    "cattle",
 		Command: []string{"cattle"},
 		RestartPolicy: container.RestartPolicy{
 			Name: "always",
 		},
-		Env: map[string]string{
-			"CATTLE_HOST_API_PROXY_MODE":         "ha",
-			"CATTLE_MODULE_PROFILE_REDIS":        "true",
-			"CATTLE_REDIS_HOSTS":                 z.config.RedisHosts(),
-			"CATTLE_MODULE_PROFILE_ZOOKEEPER":    "true",
-			"CATTLE_ZOOKEEPER_CONNECTION_STRING": z.config.ZkHosts(),
-			"CATTLE_DB_CATTLE_DATABASE":          "mysql",
-			"CATTLE_DB_CATTLE_MYSQL_HOST":        z.config.DBHost,
-			"CATTLE_DB_CATTLE_MYSQL_PORT":        strconv.Itoa(z.config.DBPort),
-			"CATTLE_DB_CATTLE_USERNAME":          z.config.DBUser,
-			"CATTLE_DB_CATTLE_PASSWORD":          z.config.DBPassword,
-			"CATTLE_DB_CATTLE_MYSQL_NAME":        z.config.DBName,
-		}})
+		Env: env,
+	})
 }
 
 func (z *ClusterService) createTunnels(state clusterState) error {
 	for i := 1; i <= z.config.ClusterSize; i++ {
-		if _, ok := z.state.clusterByIndex[i]; !ok {
+		if _, ok := state.clusterByIndex[i]; !ok {
 			z.tunnel.DeleteTunnels(i)
 		}
 	}
 
 	for i := 1; i <= z.config.ClusterSize; i++ {
-		target, ok := z.state.clusterByIndex[i]
+		target, ok := state.clusterByIndex[i]
 		if !ok {
 			continue
 		}
@@ -196,6 +229,9 @@ func (z *ClusterService) configure(state clusterState) error {
 		if err := z.d.Launch(docker.Container{
 			Name:    service,
 			Command: []string{service},
+			RestartPolicy: container.RestartPolicy{
+				Name: "always",
+			},
 			Env: map[string]string{
 				"INDEX":        strconv.Itoa(state.index),
 				"CLUSTER_SIZE": strconv.Itoa(z.config.ClusterSize),

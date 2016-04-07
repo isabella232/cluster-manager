@@ -24,7 +24,7 @@ type Manager struct {
 }
 
 func New(config *config.Config) (*Manager, error) {
-	d, err := docker.New(config.ContainerPrefix, config.Image, config.ContainerEnv)
+	d, err := docker.New(config.ConfigPath, config.ContainerPrefix, config.Image, config.Ports, config.ContainerEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +46,7 @@ func New(config *config.Config) (*Manager, error) {
 			UUID:           config.UUID,
 			IP:             config.ClusterIP,
 			RequestedIndex: requestedIndex,
+			Ports:          config.Ports,
 		},
 		config:   config,
 		services: services,
