@@ -29,14 +29,14 @@ type Config struct {
 	Ports           map[string]int
 
 	SwarmEnabled bool
-	HttpEnabled  bool
+	HTTPEnabled  bool
 
 	ConfigPath          string
 	CertPath            string
 	KeyPath             string
 	CertChainPath       string
 	EncryptionKeyPath   string
-	HostRegistrationUrl string
+	HostRegistrationURL string
 }
 
 func (c *Config) LoadConfig() error {
@@ -55,14 +55,14 @@ func (c *Config) LoadConfig() error {
 	setFromEnv(&c.DBPassword, "CATTLE_DB_CATTLE_PASSWORD")
 
 	setFromEnvBool(&c.SwarmEnabled, "CATTLE_HA_SWARM_ENABLED")
-	setFromEnvBool(&c.HttpEnabled, "CATTLE_HA_HTTP_ENABLED")
+	setFromEnvBool(&c.HTTPEnabled, "CATTLE_HA_HTTP_ENABLED")
 
 	setFromEnv(&c.ConfigPath, "CATTLE_HA_CONFIG_PATH")
 	setFromEnv(&c.CertPath, "CATTLE_HA_CERT_PATH")
 	setFromEnv(&c.KeyPath, "CATTLE_HA_KEY_PATH")
 	setFromEnv(&c.CertChainPath, "CATTLE_HA_CERT_CHAIN_PATH")
 	setFromEnv(&c.EncryptionKeyPath, "CATTLE_HA_ENCRYPTION_KEY_PATH")
-	setFromEnv(&c.HostRegistrationUrl, "CATTLE_HA_HOST_REGISTRATION_URL")
+	setFromEnv(&c.HostRegistrationURL, "CATTLE_HA_HOST_REGISTRATION_URL")
 
 	if c.Ports == nil {
 		c.Ports = map[string]int{}

@@ -10,8 +10,8 @@ import (
 
 const (
 	Swarm        = "swarm"
-	Http         = "http"
-	Https        = "https"
+	HTTP         = "http"
+	HTTPS        = "https"
 	Redis        = "redis"
 	Zk           = "zk"
 	ZkQuorumPort = "zk-quorum"
@@ -30,8 +30,8 @@ var (
 	ServicePorts        = []string{Redis, ZkQuorumPort, ZkLeaderPort, ZkClientPort}
 	DefaultServicePorts = map[string]int{
 		Swarm:        2376,
-		Http:         80,
-		Https:        443,
+		HTTP:         80,
+		HTTPS:        443,
 		Redis:        RedisPortBase,
 		ZkQuorumPort: ZkPortBase,
 		ZkLeaderPort: ZkPortBase2,

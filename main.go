@@ -19,7 +19,7 @@ func main() {
 		DBPort:            3306,
 		DBName:            "cattle",
 		SwarmEnabled:      true,
-		HttpEnabled:       true,
+		HTTPEnabled:       true,
 		ConfigPath:        "/var/lib/rancher/etc",
 		CertPath:          "server/cert.pem",
 		KeyPath:           "server/key.pem",

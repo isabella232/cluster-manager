@@ -140,8 +140,8 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 			return err
 		}
 		env := docker.ToEnv(map[string]string{
-			"CATTLE_HA_PORT_HTTP":  strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Http)),
-			"CATTLE_HA_PORT_HTTPS": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Https)),
+			"CATTLE_HA_PORT_HTTP":  strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTP)),
+			"CATTLE_HA_PORT_HTTPS": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTPS)),
 			"CATTLE_HA_PORT_SWARM": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Swarm)),
 			"HA_IMAGE":             z.config.Image,
 		})
@@ -149,8 +149,8 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 			return err
 		}
 		log.Infof("Done launching management stack")
-		if z.config.HostRegistrationUrl != "" {
-			log.Infof("You can access the site at %s", z.config.HostRegistrationUrl)
+		if z.config.HostRegistrationURL != "" {
+			log.Infof("You can access the site at %s", z.config.HostRegistrationURL)
 		}
 		z.launchedStack = true
 	}
@@ -181,8 +181,8 @@ func (z *ClusterService) launchRancherServer() error {
 		"CATTLE_DB_CATTLE_MYSQL_NAME":        z.config.DBName,
 	}
 
-	if z.config.HostRegistrationUrl != "" {
-		env["CATTLE_API_HOST"] = z.config.HostRegistrationUrl
+	if z.config.HostRegistrationURL != "" {
+		env["CATTLE_API_HOST"] = z.config.HostRegistrationURL
 	}
 
 	return z.d.Launch(docker.Container{
