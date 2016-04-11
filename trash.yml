@@ -12,7 +12,7 @@ import:
 - package: github.com/vbatts/tar-split
   version: e2a62d6b0d98fd7f1a57646812c74564fda999b4
 - package: github.com/rancher/go-rancher
-  version: ce2d465a0d29d81724fea8d4adbffbba86256fba
+  version: 80f15a052d778601e047286669edda02e83383cc
 - package: github.com/Sirupsen/logrus
   version: 219c8cb75c258c552e999735be6df753ffc7afdc
 - package: github.com/docker/distribution

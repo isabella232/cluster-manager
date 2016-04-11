@@ -24,13 +24,12 @@ type RancherClient struct {
 	ServiceRestart                           ServiceRestartOperations
 	ServicesPortRange                        ServicesPortRangeOperations
 	RecreateOnQuorumStrategyConfig           RecreateOnQuorumStrategyConfigOperations
+	HaConfigInput                            HaConfigInputOperations
 	AddOutputsInput                          AddOutputsInputOperations
-	AddRemoveClusterHostInput                AddRemoveClusterHostInputOperations
 	AddRemoveServiceLinkInput                AddRemoveServiceLinkInputOperations
 	ChangeSecretInput                        ChangeSecretInputOperations
 	SetLabelsInput                           SetLabelsInputOperations
 	ApiKey                                   ApiKeyOperations
-	Cluster                                  ClusterOperations
 	ComposeConfigInput                       ComposeConfigInputOperations
 	Container                                ContainerOperations
 	InstanceConsole                          InstanceConsoleOperations
@@ -61,7 +60,10 @@ type RancherClient struct {
 	ExternalDnsEvent                         ExternalDnsEventOperations
 	ExternalHostEvent                        ExternalHostEventOperations
 	LoadBalancerConfig                       LoadBalancerConfigOperations
+	ComposeService                           ComposeServiceOperations
+	ComposeProject                           ComposeProjectOperations
 	MachineDriverErrorInput                  MachineDriverErrorInputOperations
+	HaConfig                                 HaConfigOperations
 	Account                                  AccountOperations
 	Agent                                    AgentOperations
 	AuditLog                                 AuditLogOperations
@@ -158,13 +160,12 @@ func constructClient() *RancherClient {
 	client.ServiceRestart = newServiceRestartClient(client)
 	client.ServicesPortRange = newServicesPortRangeClient(client)
 	client.RecreateOnQuorumStrategyConfig = newRecreateOnQuorumStrategyConfigClient(client)
+	client.HaConfigInput = newHaConfigInputClient(client)
 	client.AddOutputsInput = newAddOutputsInputClient(client)
-	client.AddRemoveClusterHostInput = newAddRemoveClusterHostInputClient(client)
 	client.AddRemoveServiceLinkInput = newAddRemoveServiceLinkInputClient(client)
 	client.ChangeSecretInput = newChangeSecretInputClient(client)
 	client.SetLabelsInput = newSetLabelsInputClient(client)
 	client.ApiKey = newApiKeyClient(client)
-	client.Cluster = newClusterClient(client)
 	client.ComposeConfigInput = newComposeConfigInputClient(client)
 	client.Container = newContainerClient(client)
 	client.InstanceConsole = newInstanceConsoleClient(client)
@@ -195,7 +196,10 @@ func constructClient() *RancherClient {
 	client.ExternalDnsEvent = newExternalDnsEventClient(client)
 	client.ExternalHostEvent = newExternalHostEventClient(client)
 	client.LoadBalancerConfig = newLoadBalancerConfigClient(client)
+	client.ComposeService = newComposeServiceClient(client)
+	client.ComposeProject = newComposeProjectClient(client)
 	client.MachineDriverErrorInput = newMachineDriverErrorInputClient(client)
+	client.HaConfig = newHaConfigClient(client)
 	client.Account = newAccountClient(client)
 	client.Agent = newAgentClient(client)
 	client.AuditLog = newAuditLogClient(client)
