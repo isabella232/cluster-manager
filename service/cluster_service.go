@@ -140,10 +140,12 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 			return err
 		}
 		env := docker.ToEnv(map[string]string{
-			"CATTLE_HA_PORT_HTTP":  strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTP)),
-			"CATTLE_HA_PORT_HTTPS": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTPS)),
-			"CATTLE_HA_PORT_SWARM": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Swarm)),
-			"HA_IMAGE":             z.config.Image,
+			"CATTLE_HA_PORT_PP_HTTP":  strconv.Itoa(db.LookupPortByService(z.config.Ports, db.PPHTTP)),
+			"CATTLE_HA_PORT_PP_HTTPS": strconv.Itoa(db.LookupPortByService(z.config.Ports, db.PPHTTPS)),
+			"CATTLE_HA_PORT_HTTP":     strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTP)),
+			"CATTLE_HA_PORT_HTTPS":    strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTPS)),
+			"CATTLE_HA_PORT_SWARM":    strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Swarm)),
+			"HA_IMAGE":                z.config.Image,
 		})
 		if err := rancher.LaunchStack(env, accessKey, secretKey, projectURL); err != nil {
 			return err
@@ -179,6 +181,10 @@ func (z *ClusterService) launchRancherServer() error {
 		"CATTLE_DB_CATTLE_USERNAME":          z.config.DBUser,
 		"CATTLE_DB_CATTLE_PASSWORD":          z.config.DBPassword,
 		"CATTLE_DB_CATTLE_MYSQL_NAME":        z.config.DBName,
+	}
+
+	if z.config.HAEnabled {
+		env["CATTLE_HA_ENABLED"] = "true"
 	}
 
 	if z.config.HostRegistrationURL != "" {

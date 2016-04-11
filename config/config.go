@@ -37,6 +37,8 @@ type Config struct {
 	CertChainPath       string
 	EncryptionKeyPath   string
 	HostRegistrationURL string
+
+	HAEnabled bool
 }
 
 func (c *Config) LoadConfig() error {
@@ -63,6 +65,8 @@ func (c *Config) LoadConfig() error {
 	setFromEnv(&c.CertChainPath, "CATTLE_HA_CERT_CHAIN_PATH")
 	setFromEnv(&c.EncryptionKeyPath, "CATTLE_HA_ENCRYPTION_KEY_PATH")
 	setFromEnv(&c.HostRegistrationURL, "CATTLE_HA_HOST_REGISTRATION_URL")
+
+	setFromEnvBool(&c.HAEnabled, "CATTLE_HA_ENABLED")
 
 	if c.Ports == nil {
 		c.Ports = map[string]int{}

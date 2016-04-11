@@ -77,7 +77,7 @@ func GetRancherAgentImage(accessKey, secretKey, url string) (string, error) {
 
 	for _, s := range settings.Data {
 		if s.Name == agentImage {
-			return s.Value, err
+			return s.ActiveValue, err
 		}
 	}
 
@@ -92,6 +92,15 @@ func ConfigureEnvironment(create bool, configDir, cert, key, chain, accessKey, s
 	})
 	if err != nil {
 		return "", "", err
+	}
+
+	setting, err := c.Setting.ById("ha.enabled")
+	if err != nil {
+		return "", "", err
+	}
+
+	if setting.ActiveValue != "true" {
+		return "", "", fmt.Errorf("HA is not enabled, ha.enabled=%s", setting.ActiveValue)
 	}
 
 	project, err := getProject(create, c)
