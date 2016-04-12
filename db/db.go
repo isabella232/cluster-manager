@@ -54,13 +54,6 @@ type Member struct {
 	Index          int
 }
 
-func (m Member) PortByService(service string) int {
-	if port, ok := m.Ports[service]; ok {
-		return port
-	}
-	return DefaultServicePorts[service]
-}
-
 func LookupPortByService(ports map[string]int, service string) int {
 	if port, ok := ports[service]; ok {
 		return port

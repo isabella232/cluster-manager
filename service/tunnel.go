@@ -42,11 +42,11 @@ func (t *TunnelFactory) CreateTunnels(outgoing bool, target db.Member) error {
 		}
 
 		if outgoing {
-			if err := t.pipeEncrypt(service, target.Index, basePort, target.PortByService(service), target.IP); err != nil {
+			if err := t.pipeEncrypt(service, target.Index, basePort, db.LookupPortByService(t.c.Ports, service), target.IP); err != nil {
 				return err
 			}
 		} else {
-			if err := t.pipeDecrypt(service, target.Index, basePort, target.PortByService(service)); err != nil {
+			if err := t.pipeDecrypt(service, target.Index, basePort, db.DefaultServicePorts[service]); err != nil {
 				return err
 			}
 		}
