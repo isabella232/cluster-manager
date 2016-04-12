@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	name string = "rancher"
+	name string = "cattle"
 	bits int    = 2048
 )
 
@@ -18,10 +18,10 @@ var (
 	log = logrus.WithField("component", "cert")
 )
 
-func GenerateCert(configPath, certPath, keyPath, chainPath string) (string, string, string, error) {
+func GenerateCert(configPath, certPath, keyPath, chainPath string, hostnames ...string) (string, string, string, error) {
 	cert, err := ioutil.ReadFile(path.Join(configPath, certPath))
 	if os.IsNotExist(err) {
-		return generateCert()
+		return generateCert(hostnames...)
 	}
 	if err != nil {
 		return "", "", "", err
@@ -40,7 +40,7 @@ func GenerateCert(configPath, certPath, keyPath, chainPath string) (string, stri
 	return string(cert), string(key), string(chain), nil
 }
 
-func generateCert() (string, string, string, error) {
+func generateCert(hostnames ...string) (string, string, string, error) {
 	caCert, err := ioutil.TempFile("/tmp", "cacert")
 	if err != nil {
 		return "", "", "", err
@@ -75,7 +75,7 @@ func generateCert() (string, string, string, error) {
 	}
 
 	log.Infof("Generating TLS certs")
-	if err := cert.GenerateCert([]string{"localhost", "rancher"}, certFile.Name(), key.Name(), caCert.Name(), caKey.Name(), name, bits); err != nil {
+	if err := cert.GenerateCert(append([]string{"localhost", "rancher"}, hostnames...), certFile.Name(), key.Name(), caCert.Name(), caKey.Name(), name, bits); err != nil {
 		return "", "", "", err
 	}
 

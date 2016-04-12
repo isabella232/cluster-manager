@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	netUrl "net/url"
+	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -84,7 +87,7 @@ func GetRancherAgentImage(accessKey, secretKey, url string) (string, error) {
 	return "", fmt.Errorf("Failed to find setting %s to determine agent image", agentImage)
 }
 
-func ConfigureEnvironment(create bool, configDir, cert, key, chain, accessKey, secretKey, url string) (string, string, error) {
+func ConfigureEnvironment(create bool, configDir, cert, key, chain, accessKey, secretKey, url string, hostnames ...string) (string, string, error) {
 	c, err := client.NewRancherClient(&client.ClientOpts{
 		Url:       url,
 		AccessKey: accessKey,
@@ -108,7 +111,7 @@ func ConfigureEnvironment(create bool, configDir, cert, key, chain, accessKey, s
 		return "", "", err
 	}
 
-	if err := createCert(create, configDir, cert, key, chain, c, project); err != nil {
+	if err := createCert(create, configDir, cert, key, chain, c, project, hostnames...); err != nil {
 		return "", "", err
 	}
 
@@ -193,7 +196,8 @@ func getToken(create bool, c *client.RancherClient, p *client.Project) (string, 
 	return token.Token, err
 }
 
-func createCert(create bool, configPath, certPath, keyPath, chainPath string, c *client.RancherClient, p *client.Project) error {
+func createCert(create bool, configPath, certPath, keyPath, chainPath string, c *client.RancherClient, p *client.Project,
+	hostnames ...string) error {
 	opts := client.NewListOpts()
 	opts.Filters["name"] = systemSsl
 	opts.Filters["removed_null"] = "1"
@@ -204,19 +208,19 @@ func createCert(create bool, configPath, certPath, keyPath, chainPath string, c 
 	}
 
 	if len(certs.Data) > 0 {
-		return nil
+		return saveCert(&certs.Data[0], configPath, chainPath)
 	}
 
 	if !create {
 		return errors.New("Certificates not yet created")
 	}
 
-	cert, key, chain, err := GenerateCert(configPath, certPath, keyPath, chainPath)
+	cert, key, chain, err := GenerateCert(configPath, certPath, keyPath, chainPath, hostnames...)
 	if err != nil {
 		return err
 	}
 
-	_, err = c.Certificate.Create(&client.Certificate{
+	newCert, err := c.Certificate.Create(&client.Certificate{
 		AccountId:   p.Id,
 		Name:        systemSsl,
 		Description: "Certificate used for main load balancer",
@@ -224,7 +228,28 @@ func createCert(create bool, configPath, certPath, keyPath, chainPath string, c 
 		CertChain:   chain,
 		Key:         key,
 	})
-	return err
+
+	return saveCert(newCert, configPath, chainPath)
+}
+
+func saveCert(cert *client.Certificate, configPath, chainPath string) error {
+	certFile := path.Join(configPath, chainPath)
+	certContent, err := ioutil.ReadFile(certFile)
+	if os.IsNotExist(err) {
+		return ioutil.WriteFile(certFile, []byte(cert.CertChain), 0644)
+	} else if err != nil {
+		return err
+	} else if !strings.Contains(string(certContent), cert.CertChain) {
+		f, err := os.OpenFile(certFile, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = f.Write([]byte("\n" + cert.CertChain))
+		return err
+	}
+
+	return nil
 }
 
 func WaitForRancher(url string) bool {

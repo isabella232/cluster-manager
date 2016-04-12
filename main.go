@@ -21,9 +21,9 @@ func main() {
 		SwarmEnabled:      true,
 		HTTPEnabled:       true,
 		ConfigPath:        "/var/lib/rancher/etc",
-		CertPath:          "server/cert.pem",
-		KeyPath:           "server/key.pem",
-		CertChainPath:     "server/ca.pem",
+		CertPath:          "ssl/server-cert.pem",
+		KeyPath:           "ssl/server-key.pem",
+		CertChainPath:     "ssl/ca.crt",
 		EncryptionKeyPath: "server/encryption.key",
 	}
 

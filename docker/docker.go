@@ -159,6 +159,15 @@ func (d *Docker) shouldDelete(container Container, c types.ContainerJSON) bool {
 		changed = true
 	}
 
+	image := container.Image
+	if image == "" {
+		image = d.image
+	}
+	if image != c.Config.Image {
+		log.Infof("Container %s image is different %v != %v", container.Name, image, c.Config.Image)
+		changed = true
+	}
+
 	for k, v := range container.Env {
 		envStr := fmt.Sprintf("%s=%s", k, v)
 		found := false

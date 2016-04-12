@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	netUrl "net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -102,8 +103,16 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 		return fmt.Errorf("Server not available at %s:", pingURL)
 	}
 
+	hostnames := []string{}
+	if z.config.HostRegistrationURL != "" {
+		u, err := netUrl.Parse(z.config.HostRegistrationURL)
+		if err == nil {
+			hostnames = append(hostnames, u.Host)
+		}
+	}
+
 	projectURL, token, err := rancher.ConfigureEnvironment(master, z.config.ConfigPath, z.config.CertPath, z.config.KeyPath,
-		z.config.CertChainPath, accessKey, secretKey, url)
+		z.config.CertChainPath, accessKey, secretKey, url, hostnames...)
 	if err != nil {
 		return err
 	}
@@ -146,6 +155,7 @@ func (z *ClusterService) launchRancherAgent(master bool) error {
 			"CATTLE_HA_PORT_HTTPS":    strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTPS)),
 			"CATTLE_HA_PORT_SWARM":    strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Swarm)),
 			"HA_IMAGE":                z.config.Image,
+			"CONFIG_PATH":             z.config.ConfigPath,
 		})
 		if err := rancher.LaunchStack(env, accessKey, secretKey, projectURL); err != nil {
 			return err
@@ -169,7 +179,6 @@ func (z *ClusterService) launchRancherServer() error {
 		"CATTLE_SWARM_TLS_PORT":              strconv.Itoa(db.LookupPortByService(z.config.Ports, db.Swarm)),
 		"CATTLE_MACHINE_EXECUTE":             "false",
 		"CATTLE_COMPOSE_EXECUTOR_EXECUTE":    "false",
-		"CATTLE_CATALOG_EXECUTE":             "false",
 		"CATTLE_HOST_API_PROXY_MODE":         "ha",
 		"CATTLE_MODULE_PROFILE_REDIS":        "true",
 		"CATTLE_REDIS_HOSTS":                 z.config.RedisHosts(),
