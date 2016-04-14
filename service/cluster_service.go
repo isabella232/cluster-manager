@@ -197,7 +197,7 @@ func (z *ClusterService) launchRancherServer() error {
 	}
 
 	if z.config.HostRegistrationURL != "" {
-		env["CATTLE_API_HOST"] = z.config.HostRegistrationURL
+		env["DEFAULT_CATTLE_API_HOST"] = z.config.HostRegistrationURL
 	}
 
 	return z.d.Launch(docker.Container{
