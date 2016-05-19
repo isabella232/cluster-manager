@@ -190,6 +190,7 @@ func (z *ClusterService) launchRancherServer() error {
 		"CATTLE_DB_CATTLE_USERNAME":          z.config.DBUser,
 		"CATTLE_DB_CATTLE_PASSWORD":          z.config.DBPassword,
 		"CATTLE_DB_CATTLE_MYSQL_NAME":        z.config.DBName,
+		"CATTLE_PROXY_PROTOCOL_HTTPS_PORTS":  strconv.Itoa(db.LookupPortByService(z.config.Ports, db.HTTPS)),
 	}
 
 	if z.config.HAEnabled {

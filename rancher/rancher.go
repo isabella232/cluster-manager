@@ -233,6 +233,7 @@ func createCert(create bool, configPath, certPath, keyPath, chainPath string, c 
 }
 
 func saveCert(cert *client.Certificate, configPath, chainPath string) error {
+	os.MkdirAll(configPath, 0755)
 	certFile := path.Join(configPath, chainPath)
 	certContent, err := ioutil.ReadFile(certFile)
 	if os.IsNotExist(err) {
