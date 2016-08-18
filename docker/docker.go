@@ -140,9 +140,13 @@ func (d *Docker) GetBridgeIP() (string, error) {
 		return "", errors.New("Failed to find network address for bridge network")
 	}
 
-	ip, _, err := net.ParseCIDR(bridge.IPAM.Config[0].Subnet)
+	ip, subnet, err := net.ParseCIDR(bridge.IPAM.Config[0].Subnet)
 	if err != nil {
 		return "", err
+	}
+
+	if subnet.String() != bridge.IPAM.Config[0].Subnet {
+		return ip.String(), nil
 	}
 
 	ipInt := big.NewInt(0)
